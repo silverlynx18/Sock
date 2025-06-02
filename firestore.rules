@@ -1,0 +1,223 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- User Rules (Modified for Profile Enhancements, Advanced Status & Invitations) ---
+    match /users/{userId} {
+      allow create: if request.auth != null && request.auth.uid == userId
+                      && request.resource.data.username is string
+                      && request.resource.data.username.size() >= 3 && request.resource.data.username.size() <= 20
+                      && request.resource.data.email == request.auth.token.email
+                      // Optional: phoneNumber on create if using phone auth or collecting it upfront
+                      && (request.resource.data.phoneNumber == null || (request.resource.data.phoneNumber is string && request.resource.data.phoneNumber.matches("^\\+[1-9]\\d{1,14}$"))) // E.164 basic check
+                      && request.resource.data.createdAt == request.time
+                      && request.resource.data.bio == null
+                      && request.resource.data.socialMediaLinks == null
+                      && request.resource.data.notificationPreferences == null
+                      && request.resource.data.defaultGroupIdOnOpen == null
+                      && request.resource.data.activeStatusId is string
+                      && request.resource.data.globalCustomStatusText == null
+                      && request.resource.data.globalCustomStatusIconKey == null
+                      && request.resource.data.globalStatusExpiresAt == null
+                      && request.resource.data.overwriteAllGroupStatusesWithGlobal == false
+                      && request.resource.data.joinedGroupIds is list
+                      && (!exists(/databases/$(database)/documents/users/$(userId)) ||
+                          !existsAfter(/databases/$(database)/documents/users/$(userId)));
+
+      allow read: if request.auth != null;
+
+      allow update: if request.auth != null && request.auth.uid == userId &&
+                      // Immutable fields by client:
+                      request.resource.data.email == resource.data.email && // Email change needs verification flow
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      request.resource.data.username == resource.data.username &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.joinedGroupIds == resource.data.joinedGroupIds && // Managed by CFs
+
+                      // Updatable general fields:
+                      (request.resource.data.bio == null || (request.resource.data.bio is string && request.resource.data.bio.size() <= 1000)) &&
+                      (request.resource.data.profileImageUrl == null || (request.resource.data.profileImageUrl is string && request.resource.data.profileImageUrl.matches("^https?://.*"))) &&
+                      (request.resource.data.phoneNumber == null || (request.resource.data.phoneNumber is string && request.resource.data.phoneNumber.matches("^\\+[1-9]\\d{1,14}$"))) &&
+
+
+                      // Updatable global status fields:
+                      (request.resource.data.activeStatusId == null || request.resource.data.activeStatusId is string && request.resource.data.activeStatusId.size() <= 50) &&
+                      (request.resource.data.globalCustomStatusText == null || (request.resource.data.globalCustomStatusText is string && request.resource.data.globalCustomStatusText.size() <= 100)) &&
+                      (request.resource.data.globalCustomStatusIconKey == null || (request.resource.data.globalCustomStatusIconKey is string && request.resource.data.globalCustomStatusIconKey.size() <= 50)) &&
+                      (request.resource.data.globalStatusExpiresAt == null || request.resource.data.globalStatusExpiresAt is timestamp) &&
+                      request.resource.data.overwriteAllGroupStatusesWithGlobal is bool &&
+                      (request.resource.data.lastLogin == request.time || request.resource.data.lastLogin == resource.data.lastLogin) &&
+
+                      // Social Media Links:
+                      (request.resource.data.socialMediaLinks == null || (
+                        request.resource.data.socialMediaLinks is map &&
+                        request.resource.data.socialMediaLinks.keys().hasOnly(['twitter', 'linkedin', 'github', 'website', 'instagram']) &&
+                        request.resource.data.socialMediaLinks.values().size() <= 5 &&
+                        request.resource.data.socialMediaLinks.values().forall(link_val | link_val is string && link_val.size() <= 150)
+                      )) &&
+
+                      // Notification Preferences:
+                      (request.resource.data.notificationPreferences == null || (
+                        request.resource.data.notificationPreferences is map &&
+                        request.resource.data.notificationPreferences.keys().hasOnly([
+                          'account_security', 'group_invitations', 'group_join_requests', 'group_role_changes',
+                          'group_kicked', 'group_announcements', 'app_updates'
+                          // Ensure this list matches NotificationType.kt keys
+                        ]) &&
+                        request.resource.data.notificationPreferences.values().forall(pref_val | pref_val is bool)
+                      )) &&
+
+                      // Default Group ID on Open:
+                      (request.resource.data.defaultGroupIdOnOpen == null ||
+                        (request.resource.data.defaultGroupIdOnOpen is string && request.resource.data.defaultGroupIdOnOpen.size() <= 50)
+                      );
+
+      allow delete: if false;
+
+      match /groupStatusDetails/{groupId} { /* ... rules from previous iteration ... */
+        allow read: if request.auth != null &&
+                      (request.auth.uid == userId || isGroupMember(groupId, request.auth.uid));
+        allow create, update: if request.auth != null && request.auth.uid == userId &&
+                                request.resource.data.groupId == groupId &&
+                                request.resource.data.type is string &&
+                                (request.resource.data.type == 'APP_PRESET' || request.resource.data.type == 'USER_GENERATED_PRESET' || request.resource.data.type == 'AD_HOC_CUSTOM') &&
+                                (request.resource.data.activeStatusReferenceId == null || request.resource.data.activeStatusReferenceId is string && request.resource.data.activeStatusReferenceId.size() <= 50) &&
+                                (request.resource.data.customText == null || (request.resource.data.customText is string && request.resource.data.customText.size() <= 100)) &&
+                                (request.resource.data.customIconKey == null || (request.resource.data.customIconKey is string && request.resource.data.customIconKey.size() <= 50)) &&
+                                (request.resource.data.expiresAt == null || request.resource.data.expiresAt is timestamp) &&
+                                request.resource.data.lastUpdatedAt == request.time;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      match /customStatusPresets/{presetId} { /* ... rules from previous iteration ... */
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId &&
+                        request.resource.data.userId == request.auth.uid &&
+                        request.resource.data.presetId == presetId &&
+                        request.resource.data.presetName is string && request.resource.data.presetName.size() > 0 && request.resource.data.presetName.size() <= 50 &&
+                        request.resource.data.statusText is string && request.resource.data.statusText.size() > 0 && request.resource.data.statusText.size() <= 100 &&
+                        request.resource.data.iconKey is string && request.resource.data.iconKey.size() > 0 && request.resource.data.iconKey.size() <= 50 &&
+                        request.resource.data.createdAt == request.time;
+        allow update: if request.auth != null && request.auth.uid == userId &&
+                        request.resource.data.userId == resource.data.userId &&
+                        request.resource.data.presetId == resource.data.presetId &&
+                        request.resource.data.createdAt == resource.data.createdAt &&
+                        request.resource.data.presetName is string && request.resource.data.presetName.size() > 0 && request.resource.data.presetName.size() <= 50 &&
+                        request.resource.data.statusText is string && request.resource.data.statusText.size() > 0 && request.resource.data.statusText.size() <= 100 &&
+                        request.resource.data.iconKey is string && request.resource.data.iconKey.size() > 0 && request.resource.data.iconKey.size() <= 50 &&
+                        request.resource.data.lastUpdatedAt == request.time;
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // --- Group Management Rules ---
+    function isGroupMember(groupId, userId) { /* ... */ return exists(/databases/$(database)/documents/groups/$(groupId)/members/$(userId));}
+    function getMemberData(groupId, userId) { /* ... */ return get(/databases/$(database)/documents/groups/$(groupId)/members/$(userId)).data;}
+    function getMemberRoleName(groupId, userId) { /* ... */ let memberData = getMemberData(groupId, userId); if (memberData == null) return null; return memberData.role;}
+    function getRoleLevel(roleName) { /* ... */ if (roleName == 'OWNER') return 3; if (roleName == 'ADMIN') return 2; if (roleName == 'MODERATOR') return 1; if (roleName == 'MEMBER') return 0; return -1; }
+    function isUserRoleOrHigher(groupId, userId, requiredRoleName) { /* ... */ let userRoleName = getMemberRoleName(groupId, userId); if (userRoleName == null) return false; return getRoleLevel(userRoleName) >= getRoleLevel(requiredRoleName);}
+
+    match /groups/{groupId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (resource.data.isPublic == true || isGroupMember(groupId, request.auth.uid));
+      allow update: if request.auth != null && isGroupMember(groupId, request.auth.uid) &&
+                      isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN') &&
+                      request.resource.data.groupId == resource.data.groupId &&
+                      request.resource.data.creatorId == resource.data.creatorId &&
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      request.resource.data.memberCount == resource.data.memberCount; // memberCount only by CF
+      allow delete: if request.auth != null && isGroupMember(groupId, request.auth.uid) && getMemberRoleName(groupId, request.auth.uid) == 'OWNER';
+
+      match /members/{memberUserId} { /* ... rules from previous iteration ... */
+        allow create: if request.auth != null && ( ( get(/databases/$(database)/documents/groups/$(groupId)).data.isPublic == true && request.auth.uid == memberUserId && request.resource.data.userId == request.auth.uid && request.resource.data.role == 'MEMBER' && request.resource.data.joinedAt == request.time ) || ( isGroupMember(groupId, request.auth.uid) && isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN') && request.resource.data.userId == memberUserId ) );
+        allow read: if request.auth != null && isGroupMember(groupId, request.auth.uid);
+        allow update: if request.auth != null && isGroupMember(groupId, request.auth.uid) && ( ( isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN') && request.resource.data.userId == resource.data.userId && request.resource.data.joinedAt == resource.data.joinedAt ) || ( request.auth.uid == memberUserId && request.resource.data.role == resource.data.role && request.resource.data.userId == resource.data.userId && request.resource.data.joinedAt == resource.data.joinedAt ) );
+        allow delete: if request.auth != null && ( ( request.auth.uid == memberUserId ) || ( isGroupMember(groupId, request.auth.uid) && isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN') && request.auth.uid != memberUserId ) );
+      }
+
+      // --- Subcollection: Managed Invite Links ---
+      match /managedInviteLinks/{linkId} {
+        allow create: if request.auth != null && isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN') &&
+                        request.resource.data.groupId == groupId &&
+                        request.resource.data.linkId == linkId &&
+                        request.resource.data.code is string && request.resource.data.code.size() > 0 &&
+                        request.resource.data.createdBy == request.auth.uid &&
+                        request.resource.data.createdAt == request.time &&
+                        request.resource.data.uses == 0 &&
+                        request.resource.data.isActive == true &&
+                        request.resource.data.roleToAssign is string &&
+                        (request.resource.data.maxUses == null || request.resource.data.maxUses is number && request.resource.data.maxUses >= 0) &&
+                        (request.resource.data.expiresAt == null || request.resource.data.expiresAt is timestamp);
+
+        allow read: if request.auth != null && isGroupMember(groupId, request.auth.uid); // Any group member can read active links? Or just admins? For now, members.
+
+        allow update: if request.auth != null && isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN') &&
+                        // Only allow admin to update isActive status or other modifiable fields by admin.
+                        // Uses field should only be updated by Cloud Function.
+                        request.resource.data.uses == resource.data.uses &&
+                        request.resource.data.code == resource.data.code && // Code should be immutable by client
+                        request.resource.data.groupId == resource.data.groupId &&
+                        request.resource.data.createdBy == resource.data.createdBy &&
+                        request.resource.data.createdAt == resource.data.createdAt;
+                        // Admin can update: isActive, roleToAssign, maxUses, expiresAt
+
+        allow delete: if request.auth != null && isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN');
+      }
+    }
+
+    // --- Invitation System Rules (Updated) ---
+    match /invitations/{invitationId} {
+      allow create: if request.auth.uid == request.resource.data.inviterId &&
+                      isUserRoleOrHigher(request.resource.data.groupId, request.auth.uid, 'ADMIN') &&
+                      request.resource.data.status == 'PENDING' &&
+                      request.resource.data.createdAt == request.time &&
+                      request.resource.data.groupId != null &&
+                      (request.resource.data.inviteeId != null ||
+                       request.resource.data.inviteeEmail != null ||
+                       request.resource.data.inviteeUsername != null ||
+                       request.resource.data.inviteePhoneNumber != null // Added phone number
+                      ) &&
+                      request.resource.data.roleToAssign != null &&
+                      // originatingManagedLinkId can be null or string
+                      (request.resource.data.originatingManagedLinkId == null || request.resource.data.originatingManagedLinkId is string);
+
+
+      allow read: if request.auth.uid != null &&
+                    ( request.auth.uid == resource.data.inviterId ||
+                      request.auth.uid == resource.data.inviteeId ||
+                      (resource.data.inviteeEmail != null && resource.data.inviteeEmail == request.auth.token.email && resource.data.inviteeId == null) ||
+                      (resource.data.inviteePhoneNumber != null && resource.data.inviteePhoneNumber == request.auth.token.phone_number && resource.data.inviteeId == null) || // Match by phone if ID not set
+                      isUserRoleOrHigher(resource.data.groupId, request.auth.uid, 'ADMIN')
+                    );
+
+      allow update: if request.auth.uid != null &&
+                      // Case 1: Inviter revoking a PENDING invitation
+                      ( resource.data.status == 'PENDING' &&
+                        request.resource.data.status == 'REVOKED' &&
+                        request.auth.uid == resource.data.inviterId &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'processedAt']) &&
+                        request.resource.data.processedAt == request.time
+                      ) ||
+                      // Case 2: Cloud Function updating for username/phone/email resolution or managed link claim
+                      // This rule is complex because it tries to cover CF updates. Ideally, CFs use Admin SDK and bypass rules.
+                      // If CFs operate under user's auth, these fields would need to be writable by the specific CF "user" or a trusted role.
+                      // For simplicity, this allows an Admin of the group or the original inviter to update for resolution.
+                      // Status changes to ACCEPTED/DECLINED should NOT be allowed by this client rule; done by CF.
+                      ( resource.data.status == 'PENDING' && request.resource.data.status == 'PENDING' && // Status does not change from PENDING here
+                        (isUserRoleOrHigher(resource.data.groupId, request.auth.uid, 'ADMIN') || request.auth.uid == resource.data.inviterId) &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                            'inviteeId', 'isUsernameResolved', 'resolutionError', 'inviteePhoneNumber', 'type', 'originatingManagedLinkId'
+                         ]) &&
+                         // Ensure other critical fields are not changed by this type of update
+                         request.resource.data.groupId == resource.data.groupId &&
+                         request.resource.data.inviterId == resource.data.inviterId &&
+                         request.resource.data.roleToAssign == resource.data.roleToAssign
+                      );
+                      // ACCEPTED/DECLINED status changes are ONLY by Cloud Function (Admin SDK).
+
+      allow delete: if request.auth.uid != null &&
+                      request.auth.uid == resource.data.inviterId &&
+                      (resource.data.status == 'PENDING' || resource.data.status == 'REVOKED' || resource.data.status == 'EXPIRED' || resource.data.status == 'DECLINED');
+    }
+  }
+}
