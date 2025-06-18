@@ -149,7 +149,7 @@ service cloud.firestore {
                         (request.resource.data.maxUses == null || request.resource.data.maxUses is number && request.resource.data.maxUses >= 0) &&
                         (request.resource.data.expiresAt == null || request.resource.data.expiresAt is timestamp);
 
-        allow read: if request.auth != null && isGroupMember(groupId, request.auth.uid); // Any group member can read active links? Or just admins? For now, members.
+        allow read: if request.auth != null && isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN'); // Only Admins/Owners can read managed links
 
         allow update: if request.auth != null && isUserRoleOrHigher(groupId, request.auth.uid, 'ADMIN') &&
                         // Only allow admin to update isActive status or other modifiable fields by admin.

@@ -1,32 +1,33 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
-// Ensure Firebase Admin is initialized (typically in index.ts or a shared config)
-// if (admin.apps.length === 0) {
-//   admin.initializeApp();
-// }
+// Assuming admin.initializeApp() is called in index.ts
 const db = admin.firestore();
 
 // Default status to revert to when a status expires.
-// Could be configured elsewhere or passed if more dynamic.
-const DEFAULT_EXPIRED_STATUS_ID = "online"; // Assuming "online" is an AppPresetStatus.id
+// This should match one of the AppPresetStatus.id values.
+const DEFAULT_EXPIRED_STATUS_ID = "online";
 
 /**
- * Scheduled function to clean up expired user statuses.
- * This includes global statuses on the User object and group-specific statuses
- * in the groupStatusDetails subcollection.
+ * Scheduled Cloud Function to automatically clear expired user statuses.
+ * Runs periodically (e.g., every hour) to check and reset:
+ * 1. Global statuses on User documents (`globalStatusExpiresAt`).
+ * 2. Group-specific statuses in `users/{userId}/groupStatusDetails` subcollections (`expiresAt`).
  *
- * Schedule: e.g., "every 1 hours" or "every 15 minutes from 00:00 to 23:59"
- * For testing, can be triggered via HTTP or manually.
+ * Expired statuses are reset to a default (e.g., "online") and custom text/icons are cleared.
+ * Group-specific statuses are deleted to allow fallback to global status.
+ *
+ * @param {functions.EventContext} context - The event context.
+ * @return {Promise<null>} A promise that resolves when the function completes.
  */
 export const clearExpiredStatuses = functions.pubsub
-  .schedule("every 60 minutes") // Adjust schedule as needed
+  .schedule("every 60 minutes") // Configurable schedule (e.g., "every 15 minutes", "every 1 hours")
   .onRun(async (context) => {
     const now = admin.firestore.Timestamp.now();
-    const batchSize = 200; // Firestore batch write limit is 500, process in smaller chunks.
+    const batchSize = 200; // Firestore batch write limit is 500 operations; process in smaller chunks.
     let operationsCommitted = 0;
 
-    functions.logger.info("Starting scheduled job: clearExpiredStatuses");
+    functions.logger.info(`[clearExpiredStatuses] Starting scheduled job. Current time: ${now.toDate().toISOString()}`);
 
     // 1. Clean up expired global statuses on User documents
     try {
@@ -36,9 +37,8 @@ export const clearExpiredStatuses = functions.pubsub
 
       let lastGlobalSnapshot: admin.firestore.QueryDocumentSnapshot | null = null;
       let globalHasMore = true;
-      let globalBatch = db.batch();
-      let globalDocsInBatch = 0;
 
+      functions.logger.info("[clearExpiredStatuses] Starting global status cleanup phase.");
       while (globalHasMore) {
         let currentGlobalQuery = expiredGlobalUsersQuery;
         if (lastGlobalSnapshot) {
@@ -53,89 +53,82 @@ export const clearExpiredStatuses = functions.pubsub
         }
         lastGlobalSnapshot = snapshot.docs[snapshot.docs.length - 1];
 
+        let globalBatch = db.batch(); // Initialize batch inside loop for potentially multiple batches
+        let globalDocsInBatch = 0;
+
         snapshot.forEach((doc) => {
-          functions.logger.log(`Processing user ${doc.id} for expired global status.`);
+          functions.logger.log(`[clearExpiredStatuses] Processing user ${doc.id} for expired global status.`);
           globalBatch.update(doc.ref, {
             activeStatusId: DEFAULT_EXPIRED_STATUS_ID,
             globalCustomStatusText: null,
             globalCustomStatusIconKey: null,
-            globalStatusExpiresAt: null,
+            globalStatusExpiresAt: null, // Clear the expiry
           });
           globalDocsInBatch++;
-          if (globalDocsInBatch >= batchSize) {
-            await globalBatch.commit();
-            operationsCommitted += globalDocsInBatch;
-            functions.logger.info(`Committed ${globalDocsInBatch} global status updates.`);
+          if (globalDocsInBatch >= batchSize) { // Commit if batch is full
+            globalBatch.commit()
+                .then(results => { operationsCommitted += results.length; functions.logger.info(`[clearExpiredStatuses] Committed ${results.length} global status updates in a batch.`);})
+                .catch(err => functions.logger.error("[clearExpiredStatuses] Error committing global status batch:", err));
             globalBatch = db.batch(); // Start a new batch
             globalDocsInBatch = 0;
           }
         });
+
+        if (globalDocsInBatch > 0) { // Commit any remaining operations in the last batch
+          await globalBatch.commit();
+          operationsCommitted += globalDocsInBatch; // Assuming commit() returns array of WriteResult or number
+          functions.logger.info(`[clearExpiredStatuses] Committed final ${globalDocsInBatch} global status updates.`);
+        }
       }
-      if (globalDocsInBatch > 0) {
-        await globalBatch.commit();
-        operationsCommitted += globalDocsInBatch;
-        functions.logger.info(`Committed final ${globalDocsInBatch} global status updates.`);
-      }
-      functions.logger.info("Global status cleanup phase complete.");
+      functions.logger.info("[clearExpiredStatuses] Global status cleanup phase complete.");
     } catch (error) {
-      functions.logger.error("Error cleaning up global user statuses:", error);
+      functions.logger.error("[clearExpiredStatuses] Error processing global user statuses:", error);
     }
 
     // 2. Clean up expired group-specific statuses in `groupStatusDetails` subcollections
     try {
       const expiredGroupStatusesQuery = db
-        .collectionGroup("groupStatusDetails")
+        .collectionGroup("groupStatusDetails") // Query across all users' subcollections
         .where("expiresAt", "<=", now);
 
-      // Note: CollectionGroup queries are harder to paginate effectively without specific ordering
-      // if we expect huge numbers. For moderate numbers, limit and process.
-      // If this becomes very large, consider a different approach for large-scale iteration.
-      let groupStatusBatch = db.batch();
-      let groupStatusDocsInBatch = 0;
-      const groupStatusSnapshot = await expiredGroupStatusesQuery.limit(batchSize * 5).get(); // Get a larger initial set for collection group
+      functions.logger.info("[clearExpiredStatuses] Starting group-specific status cleanup phase.");
+      // For collectionGroup queries, especially if they can return many results,
+      // consider more robust pagination or processing in smaller, more frequent intervals if necessary.
+      // The current limit(batchSize * 5) is a heuristic to get a manageable set.
+      const groupStatusSnapshot = await expiredGroupStatusesQuery.limit(batchSize * 2).get(); // Fetch a larger set to process in batches
 
       if (groupStatusSnapshot.empty) {
-        functions.logger.info("No expired group-specific statuses found.");
+        functions.logger.info("[clearExpiredStatuses] No expired group-specific statuses found in this run.");
       } else {
-        groupStatusSnapshot.forEach((doc) => {
-          functions.logger.log(`Processing group status ${doc.ref.path} for expiration.`);
-          // Revert to reflect global status or a default for the group
-          // For simplicity, we delete the specific override, letting it fallback to global.
-          // Alternatively, update to a default group status.
-          groupStatusBatch.delete(doc.ref); // Deleting the specific status reverts to global/default.
-          // Or, to update instead of delete:
-          // groupStatusBatch.update(doc.ref, {
-          //   type: "APP_PRESET", // Or whatever your default type is
-          //   activeStatusReferenceId: DEFAULT_EXPIRED_STATUS_ID,
-          //   customText: null,
-          //   customIconKey: null,
-          //   expiresAt: null,
-          //   lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          // });
+        functions.logger.info(`[clearExpiredStatuses] Found ${groupStatusSnapshot.size} expired group-specific statuses to process.`);
+        let groupStatusBatch = db.batch();
+        let groupStatusDocsInBatch = 0;
+
+        for (const doc of groupStatusSnapshot.docs) { // Use for...of for async operations within loop if needed, though not here
+          functions.logger.log(`[clearExpiredStatuses] Processing group status ${doc.ref.path} for expiration.`);
+          // Deleting the specific status document causes it to fallback to global/default user status.
+          groupStatusBatch.delete(doc.ref);
           groupStatusDocsInBatch++;
+
           if (groupStatusDocsInBatch >= batchSize) {
-            groupStatusBatch.commit()
-              .then(() => {
-                operationsCommitted += groupStatusDocsInBatch;
-                functions.logger.info(`Committed ${groupStatusDocsInBatch} group status updates/deletions.`);
-              })
-              .catch(err => functions.logger.error("Error committing group status batch:", err));
-            groupStatusBatch = db.batch();
+            await groupStatusBatch.commit();
+            operationsCommitted += groupStatusDocsInBatch;
+            functions.logger.info(`[clearExpiredStatuses] Committed ${groupStatusDocsInBatch} group status deletions.`);
+            groupStatusBatch = db.batch(); // New batch
             groupStatusDocsInBatch = 0;
           }
-        });
-
-        if (groupStatusDocsInBatch > 0) {
+        }
+        if (groupStatusDocsInBatch > 0) { // Commit remaining operations
           await groupStatusBatch.commit();
           operationsCommitted += groupStatusDocsInBatch;
-          functions.logger.info(`Committed final ${groupStatusDocsInBatch} group status updates/deletions.`);
+          functions.logger.info(`[clearExpiredStatuses] Committed final ${groupStatusDocsInBatch} group status deletions.`);
         }
       }
-      functions.logger.info("Group-specific status cleanup phase complete.");
+      functions.logger.info("[clearExpiredStatuses] Group-specific status cleanup phase complete.");
     } catch (error) {
-      functions.logger.error("Error cleaning up group-specific statuses:", error);
+      functions.logger.error("[clearExpiredStatuses] Error processing group-specific statuses:", error);
     }
 
-    functions.logger.info(`clearExpiredStatuses job finished. Total operations committed: ${operationsCommitted}.`);
+    functions.logger.info(`[clearExpiredStatuses] Job finished. Total operations/documents processed estimate: ${operationsCommitted}.`);
     return null;
   });
