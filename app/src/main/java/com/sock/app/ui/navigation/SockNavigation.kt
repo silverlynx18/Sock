@@ -6,13 +6,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.sock.app.data.repository.AuthRepository
 import com.sock.app.ui.screens.auth.LoginScreen
 import com.sock.app.ui.screens.auth.SignUpScreen
 import com.sock.app.ui.screens.dashboard.DashboardScreen
+import com.sock.app.ui.screens.group.GroupPageScreen
+import com.sock.app.ui.screens.managegroups.ManageGroupsScreen
 
 @Composable
 fun SockNavigation(context: Context) {
@@ -67,6 +71,35 @@ fun SockNavigation(context: Context) {
                 }
             )
         }
+
+        composable(Screen.GroupPage.route) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getString(Screen.GroupPage.GROUP_ID_ARG) ?: ""
+            GroupPageScreen(
+                groupId = groupId,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToGroupDetails = {
+                    navController.navigate(Screen.GroupDetails.createRoute(groupId))
+                },
+                onNavigateToUserProfile = { userId ->
+                    navController.navigate(Screen.UserProfile.createRoute(userId))
+                }
+            )
+        }
+
+        composable(Screen.ManageGroups.route) {
+            ManageGroupsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToGroup = { groupId ->
+                    navController.navigate(Screen.GroupPage.createRoute(groupId))
+                },
+                onNavigateToGroupDetails = { groupId ->
+                    navController.navigate(Screen.GroupDetails.createRoute(groupId))
+                },
+                onCreateGroup = {
+                    // TODO: Navigate to create group screen
+                }
+            )
+        }
     }
 }
 
@@ -79,6 +112,7 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile")
     object GroupPage : Screen("group_page/{groupId}") {
         fun createRoute(groupId: String) = "group_page/$groupId"
+        const val GROUP_ID_ARG = "groupId"
     }
     object GroupDetails : Screen("group_details/{groupId}") {
         fun createRoute(groupId: String) = "group_details/$groupId"
