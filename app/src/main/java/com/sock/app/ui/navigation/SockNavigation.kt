@@ -58,7 +58,13 @@ fun SockNavigation(context: Context) {
             DashboardScreen(
                 onNavigateToLogin = { navController.navigate(Screen.Login.route) {
                     popUpTo(Screen.Dashboard.route) { inclusive = true }
-                }}
+                }},
+                onNavigateToGroup = { groupId ->
+                    navController.navigate(Screen.GroupPage.createRoute(groupId))
+                },
+                onNavigateToManageGroups = {
+                    navController.navigate(Screen.ManageGroups.route)
+                }
             )
         }
     }

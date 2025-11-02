@@ -13,8 +13,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 object ApiConfig {
-    // TODO: Replace with your actual backend URL
-    const val BASE_URL = "http://localhost:3000/api"
+    // For Android emulator, use 10.0.2.2 to access host machine's localhost
+    // For physical device, use your computer's IP address (e.g., http://192.168.1.XXX:3000/api)
+    const val BASE_URL = "http://10.0.2.2:3000/api"
 }
 
 @Serializable
