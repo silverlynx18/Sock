@@ -16,6 +16,8 @@ import com.sock.app.ui.screens.auth.LoginScreen
 import com.sock.app.ui.screens.auth.SignUpScreen
 import com.sock.app.ui.screens.dashboard.DashboardScreen
 import com.sock.app.ui.screens.group.GroupPageScreen
+import com.sock.app.ui.screens.managegroups.CreateGroupScreen
+import com.sock.app.ui.screens.managegroups.InviteLinkScreen
 import com.sock.app.ui.screens.managegroups.ManageGroupsScreen
 
 @Composable
@@ -96,7 +98,38 @@ fun SockNavigation(context: Context) {
                     navController.navigate(Screen.GroupDetails.createRoute(groupId))
                 },
                 onCreateGroup = {
-                    // TODO: Navigate to create group screen
+                    navController.navigate(Screen.CreateGroup.route)
+                }
+            )
+        }
+
+        composable(Screen.CreateGroup.route) {
+            CreateGroupScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onGroupCreated = { groupId, inviteLinkCode, groupName ->
+                    navController.navigate(Screen.InviteLink.createRoute(groupName, inviteLinkCode)) {
+                        popUpTo(Screen.ManageGroups.route) { inclusive = false }
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = Screen.InviteLink.route,
+            arguments = listOf(
+                navArgument("groupName") { type = NavType.StringType },
+                navArgument("inviteCode") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val groupName = backStackEntry.arguments?.getString("groupName") ?: "Group"
+            val inviteCode = backStackEntry.arguments?.getString("inviteCode") ?: ""
+            InviteLinkScreen(
+                groupName = groupName,
+                inviteLinkCode = inviteCode,
+                onDone = {
+                    navController.navigate(Screen.ManageGroups.route) {
+                        popUpTo(Screen.ManageGroups.route) { inclusive = true }
+                    }
                 }
             )
         }
@@ -119,5 +152,9 @@ sealed class Screen(val route: String) {
     }
     object UserProfile : Screen("user_profile/{userId}") {
         fun createRoute(userId: String) = "user_profile/$userId"
+    }
+    object CreateGroup : Screen("create_group")
+    object InviteLink : Screen("invite_link/{groupName}/{inviteCode}") {
+        fun createRoute(groupName: String, inviteCode: String) = "invite_link/$groupName/$inviteCode"
     }
 }

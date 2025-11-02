@@ -325,7 +325,7 @@ private fun GroupListItem(
             }
             IconButton(onClick = onDetailsClick) {
                 Icon(
-                    androidx.compose.material.icons.Icons.Default.MoreVert,
+                    Icons.Default.MoreVert,
                     contentDescription = "Group Details"
                 )
             }
