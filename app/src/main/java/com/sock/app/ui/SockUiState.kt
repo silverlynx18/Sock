@@ -1,6 +1,8 @@
 package com.sock.app.ui
 
 import com.sock.app.model.AvailabilityStatus
+import com.sock.app.model.CustomStatus
+import com.sock.app.model.CustomStatusTone
 import com.sock.app.model.GroupMemberSummary
 import com.sock.app.model.GroupSummary
 import com.sock.app.model.InvitationSummary
@@ -11,7 +13,8 @@ data class SockUiState(
     val groupsManagedByUser: List<GroupSummary> = emptyList(),
     val groupsMemberOf: List<GroupSummary> = emptyList(),
     val invitations: List<InvitationSummary> = emptyList(),
-    val selectedGroupMembers: List<GroupMemberSummary> = emptyList()
+    val selectedGroupMembers: List<GroupMemberSummary> = emptyList(),
+    val customStatuses: List<CustomStatus> = emptyList()
 ) {
     val dashboardGroups: List<GroupSummary>
         get() = (groupsManagedByUser + groupsMemberOf)
@@ -70,6 +73,22 @@ fun previewSockUiState(): SockUiState {
                 displayName = "Sam Patel",
                 username = "sam",
                 status = AvailabilityStatus.WORKING
+            )
+        ),
+        customStatuses = listOf(
+            CustomStatus(
+                text = "Take a breather",
+                tone = CustomStatusTone.RELAXED,
+                note = "Happy for a quick walk"
+            ),
+            CustomStatus(
+                text = "Heads down sprint",
+                tone = CustomStatusTone.FOCUSED
+            ),
+            CustomStatus(
+                text = "Need quiet space",
+                tone = CustomStatusTone.BOUNDARY,
+                note = "Ping later tonight"
             )
         )
     )

@@ -65,7 +65,6 @@ android {
 }
 
 dependencies {
-    implementation(platform(libs.firebase.bom))
     implementation(platform(libs.androidx.compose.bom))
 
     implementation(libs.androidx.core.ktx)
@@ -76,15 +75,14 @@ dependencies {
 
     implementation(libs.bundles.compose.ui)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.playservices)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
-    implementation(libs.firebase.auth)
-    implementation(libs.firebase.firestore)
-    implementation(libs.firebase.storage)
-    implementation(libs.firebase.functions)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
 
