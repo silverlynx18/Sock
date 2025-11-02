@@ -12,29 +12,41 @@ A social availability app for Android that helps friends and groups coordinate i
 
 ## Tech Stack
 
+### Android App
 - **Language**: Kotlin
 - **UI Framework**: Jetpack Compose
 - **Architecture**: MVVM (Model-View-ViewModel)
-- **Backend**: Firebase
-  - Authentication (Email/Password)
-  - Firestore (Database)
-  - Cloud Functions (Server-side logic)
-  - Storage (Profile pictures)
+- **HTTP Client**: Ktor
+- **JSON Serialization**: Kotlinx Serialization
 - **Design**: Material Design 3
+
+### Backend
+- **Runtime**: Node.js
+- **Framework**: Express.js
+- **Database**: SQLite (suitable for <100 users)
+- **Authentication**: JWT tokens
+- **Password Hashing**: bcryptjs
 
 ## Project Structure
 
 ```
-app/
-??? src/main/java/com/sock/app/
-?   ??? data/
-?   ?   ??? model/          # Data models (User, Group, Invitation, Status)
-?   ?   ??? repository/     # Data access layer (Firebase repositories)
-?   ??? ui/
-?   ?   ??? navigation/     # Navigation setup
-?   ?   ??? screens/        # UI screens (Login, Dashboard, Groups, etc.)
-?   ?   ??? theme/          # App theme and styling
-?   ??? MainActivity.kt     # Main entry point
+.
+??? app/                          # Android app
+?   ??? src/main/java/com/sock/app/
+?       ??? data/
+?       ?   ??? api/              # REST API client
+?       ?   ??? model/            # Data models
+?       ?   ??? repository/       # Data access layer
+?       ??? ui/
+?       ?   ??? navigation/       # Navigation setup
+?       ?   ??? screens/          # UI screens
+?       ?   ??? theme/            # App theme
+?       ??? MainActivity.kt
+??? backend/                      # Node.js/Express API
+    ??? routes/                   # API route handlers
+    ??? middleware/               # Auth middleware
+    ??? scripts/                  # Database initialization
+    ??? server.js                 # Entry point
 ```
 
 ## Current Status
@@ -42,17 +54,23 @@ app/
 ### ? Completed
 - [x] Project structure and Gradle configuration
 - [x] Core data models (User, Group, Invitation, Status)
-- [x] Firebase repositories (Auth, User, Group, Invitation, Functions)
+- [x] REST API client setup (Ktor)
+- [x] Repository layer refactored for REST API
+- [x] Backend API server (Node.js/Express)
+- [x] SQLite database schema
+- [x] Authentication endpoints (signup/signin)
+- [x] User management endpoints
+- [x] Group management endpoints
+- [x] Invitation system endpoints
 - [x] Basic navigation setup
 - [x] Authentication screens (Login, Sign Up) - UI only
 - [x] Dashboard screen placeholder
 
 ### ?? In Progress
-- [ ] Firebase configuration setup
-- [ ] Authentication logic implementation
+- [ ] Complete ViewModels with API integration
 - [ ] Dashboard with status system
 - [ ] Group management screens
-- [ ] Invitations system
+- [ ] Real-time updates (polling or WebSocket)
 
 ### ?? TODO
 - [ ] Implement ViewModels for all screens
@@ -62,45 +80,58 @@ app/
 - [ ] Create Manage Groups screen
 - [ ] Implement invitation acceptance flow
 - [ ] Add right-hand navigation bar
-- [ ] Implement Cloud Functions
-- [ ] Set up Firebase Security Rules
 - [ ] Add profile picture upload functionality
 - [ ] Implement user profile screens
+- [ ] Add WebSocket support for real-time updates (optional)
 
 ## Setup Instructions
 
 ### Prerequisites
-- Android Studio Hedgehog (2023.1.1) or later
-- JDK 17 or later
-- Firebase project account
+- **Android Development**: Android Studio Hedgehog (2023.1.1) or later, JDK 17+
+- **Backend**: Node.js 18+ and npm
 
-### Initial Setup
+### Backend Setup
 
-1. **Clone the repository**
+1. **Navigate to backend directory**
    ```bash
-   git clone <repository-url>
-   cd sock-app
+   cd backend
    ```
 
-2. **Set up Firebase**
-   - Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
-   - Enable Authentication (Email/Password)
-   - Create a Firestore database
-   - Enable Cloud Functions
-   - Enable Storage
-   - Download `google-services.json` and place it in `app/` directory
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-3. **Open in Android Studio**
+3. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env and set a secure JWT_SECRET
+   ```
+
+4. **Start the server**
+   ```bash
+   npm start
+   # Or for development with auto-reload:
+   npm run dev
+   ```
+
+   The API will be available at `http://localhost:3000/api`
+
+### Android App Setup
+
+1. **Open in Android Studio**
    - Open the project in Android Studio
    - Sync Gradle files
    - Let Android Studio download dependencies
 
-4. **Configure Firebase Cloud Functions**
-   - See `functions/` directory (to be created) for Cloud Functions setup
-   - Deploy functions using Firebase CLI:
-     ```bash
-     firebase deploy --only functions
-     ```
+2. **Configure API endpoint**
+   - Update `ApiConfig.BASE_URL` in `app/src/main/java/com/sock/app/data/api/ApiService.kt`
+   - For Android emulator: use `http://10.0.2.2:3000/api` (emulator's localhost)
+   - For physical device: use your computer's IP address, e.g., `http://192.168.1.XXX:3000/api`
+
+3. **Build and run**
+   - Connect an Android device or start an emulator
+   - Click Run in Android Studio
 
 ## Key Features (MVP)
 
@@ -130,89 +161,61 @@ app/
 - Global Couch Icon ?? for navigation
 - Group pages with themed colors
 
-## Firebase Data Structure
+## API Documentation
 
-### Users Collection (`/users/{userId}`)
-```json
-{
-  "uid": "string",
-  "username": "string (unique)",
-  "displayName": "string",
-  "email": "string",
-  "phoneNumber": "string",
-  "profilePictureUrl": "string?",
-  "createdAt": "timestamp",
-  "globalStatusId": "string?",
-  "groupSpecificStatuses": {
-    "groupId": "statusId"
-  },
-  "groups": ["groupId1", "groupId2"]
-}
+See [backend/README.md](./backend/README.md) for detailed API endpoint documentation.
+
+### Authentication
+
+Most endpoints require a JWT token in the Authorization header:
+```
+Authorization: Bearer <token>
 ```
 
-### Groups Collection (`/groups/{groupId}`)
-```json
-{
-  "groupId": "string",
-  "name": "string",
-  "groupProfilePictureUrl": "string?",
-  "primaryColor": "string",
-  "secondaryColor": "string",
-  "createdAt": "timestamp",
-  "ownerId": "string",
-  "inviteLinkCode": "string (unique)",
-  "members": {
-    "userId": {
-      "role": "owner|admin|member",
-      "username": "string",
-      "joinedAt": "timestamp"
-    }
-  }
-}
-```
+Tokens are obtained via `/api/auth/signin` or `/api/auth/signup`.
 
-### Invitations Collection (`/invitations/{invitationId}`)
-```json
-{
-  "groupID": "string",
-  "groupName": "string",
-  "invitedUserID": "string",
-  "inviterUserID": "string",
-  "status": "pending_acceptance|accepted|declined",
-  "createdAt": "timestamp",
-  "updatedAt": "timestamp"
-}
-```
+## Database Schema
 
-## Cloud Functions
-
-The app requires the following Cloud Functions (see design document for details):
-1. `checkUsernameAvailability` - Validates username uniqueness
-2. `createGroup` - Creates a new group with invite link
-3. `processInviteLink` - Processes invite link clicks
-4. `acceptInvitation` - Accepts a group invitation
-5. `declineInvitation` - Declines a group invitation
-6. `handleUserLeaveOrRemove` - Handles user leaving/removal
-7. `transferOwnership` - Transfers group ownership
-8. `deleteEmptyGroup` - Deletes empty groups
-9. `processBlindUsernameInvite` - Invites user by username
-10. `deleteUserAccount` - Deletes user account and cleanup
+The SQLite database includes:
+- **users** - User accounts with encrypted passwords
+- **groups** - Groups with custom colors and invite codes
+- **group_members** - Group membership with roles
+- **user_groups** - Quick lookup for user's groups
+- **invitations** - Group invitations with status tracking
 
 ## Development Guidelines
 
-- Follow Material Design 3 guidelines
+- Follow Material Design 3 guidelines for UI
 - Use Kotlin coroutines for async operations
 - Implement proper error handling
 - Use Compose state management best practices
 - Write unit tests for ViewModels
 - Follow the MVVM architecture pattern
+- Backend follows RESTful API conventions
+
+## Production Considerations
+
+For production deployment (<100 users):
+- Keep SQLite for simplicity
+- Consider adding database backups
+- Use environment variables for sensitive config
+- Set up HTTPS/SSL certificates
+- Implement rate limiting
+- Add request logging and monitoring
+
+For scaling beyond 100 users:
+- Consider migrating to PostgreSQL
+- Add Redis for caching
+- Implement WebSocket for real-time updates
+- Add load balancing if needed
 
 ## Resources
 
 - [Design Document](./Sock%20on%20the%20Door%20App.pdf) - Complete MVP specifications
 - [Material Design 3](https://m3.material.io/)
 - [Jetpack Compose](https://developer.android.com/jetpack/compose)
-- [Firebase Documentation](https://firebase.google.com/docs)
+- [Ktor Documentation](https://ktor.io/)
+- [Express.js Documentation](https://expressjs.com/)
 
 ## License
 

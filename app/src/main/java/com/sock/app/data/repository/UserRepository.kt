@@ -1,63 +1,69 @@
 package com.sock.app.data.repository
 
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
+import com.sock.app.data.api.ApiService
+import com.sock.app.data.api.UserDto
 import com.sock.app.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.*
 
 class UserRepository {
-    private val db = FirebaseFirestore.getInstance()
-    private val usersCollection = db.collection("users")
+    private val apiService = ApiService()
 
     suspend fun createUser(user: User): Result<Unit> {
-        return try {
-            usersCollection.document(user.uid).set(user).await()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        // User creation is handled during signup, so this might not be needed
+        // or can be used for profile updates
+        return Result.success(Unit)
     }
 
     suspend fun getUser(userId: String): Result<User?> {
         return try {
-            val document = usersCollection.document(userId).get().await()
-            val user = document.toObject(User::class.java) ?: User.fromDocument(document)
-            Result.success(user)
+            val result = apiService.getUser(userId)
+            result.map { it.toUser() }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     fun observeUser(userId: String): Flow<User?> = flow {
-        usersCollection.document(userId).addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                emit(null)
-                return@addSnapshotListener
-            }
-            snapshot?.let {
-                val user = User.fromDocument(it)
-                emit(user)
-            }
-        }
+        // For now, just fetch once. Can be enhanced with polling or WebSocket later
+        val result = getUser(userId)
+        emit(result.getOrNull())
     }
 
     suspend fun updateUser(userId: String, updates: Map<String, Any>): Result<Unit> {
         return try {
-            usersCollection.document(userId).update(updates).await()
-            Result.success(Unit)
+            val result = apiService.updateUser(userId, updates)
+            result.map { Unit }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     suspend fun checkUsernameAvailability(username: String): Result<Boolean> {
-        return try {
-            val query = usersCollection.whereEqualTo("username", username).limit(1).get().await()
-            Result.success(query.isEmpty)
+        return apiService.checkUsernameAvailability(username)
+    }
+
+    private fun UserDto.toUser(): User {
+        val createdAtTimestamp = try {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+            dateFormat.parse(createdAt)?.time
         } catch (e: Exception) {
-            Result.failure(e)
+            null
         }
+
+        return User(
+            uid = uid,
+            username = username,
+            displayName = displayName,
+            email = email,
+            phoneNumber = phoneNumber,
+            profilePictureUrl = profilePictureUrl,
+            createdAt = createdAtTimestamp,
+            globalStatusId = globalStatusId,
+            groupSpecificStatuses = groupSpecificStatuses,
+            groups = groups
+        )
     }
 }

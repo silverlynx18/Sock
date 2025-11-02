@@ -1,10 +1,11 @@
 package com.sock.app.ui.navigation
 
+import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -14,11 +15,18 @@ import com.sock.app.ui.screens.auth.SignUpScreen
 import com.sock.app.ui.screens.dashboard.DashboardScreen
 
 @Composable
-fun SockNavigation() {
+fun SockNavigation(context: Context) {
     val navController = rememberNavController()
-    val authRepository = AuthRepository()
+    val authRepository = remember { AuthRepository(context) }
     
-    val startDestination = if (authRepository.isUserLoggedIn) {
+    // Initialize auth on startup
+    LaunchedEffect(Unit) {
+        authRepository.initializeAuth()
+    }
+    
+    val isLoggedIn by authRepository.isUserLoggedIn.collectAsState(initial = false)
+    
+    val startDestination = if (isLoggedIn) {
         Screen.Dashboard.route
     } else {
         Screen.Login.route
