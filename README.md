@@ -19,9 +19,11 @@ Android app for the "Sock on the Door" availability-sharing experience.
 - `app/` ? Android application module with Compose UI and Hilt setup.
 - `app/src/main/java/com/sock/app` ? App entry point, navigation host, screen implementations.
 - `docs/` ? Requirements notes and ongoing product guidance.
+- `ios/` ? Swift Package scaffolding for the iOS SwiftUI client.
+- `web/` ? Vite + React TypeScript implementation for the web client.
 - `sock_requirements.txt` ? Text extraction of the full Product Requirements Document (PRD).
 
 ## Next Steps
 1. Flesh out the local-first data layer (Room repositories + DataStore preferences) to back the Compose UI.
-2. Replace preview data in `SockApp` with repository-backed state and view models.
-3. When preparing for a public launch, introduce cloud sync behind repository interfaces and guard it behind build flavors.
+2. Ensure iOS (SwiftUI) and Web (React) clients mirror repository contracts and design tokens; replace preview data with shared data sources.
+3. When preparing for a public launch, introduce cloud sync behind repository interfaces and guard it behind build flavors/platform flags.

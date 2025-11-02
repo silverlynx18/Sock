@@ -30,6 +30,7 @@
 - Hilt DI, Coroutines, Room (local persistence), DataStore (preferences/config), optional KSP for schema generation.
 - Repository interfaces abstract future remote sync so cloud hosting can be introduced only for public deployments.
 - Gradle 8.7 wrapper, AGP 8.5.2, Kotlin 1.9.24.
+- SwiftUI (iOS) + Swift Package Manager for parallel native development; React + Vite (Web) sharing design tokens and data contracts.
 
 ## Near-Term Implementation Sequence
 1. Lay down project scaffolding (done).
@@ -47,6 +48,12 @@
 - **Advanced Notification Controls**: Granular quiet hours and per-group overrides powered by DataStore.
 - **Multi-device Sync Ready**: Repository interfaces expose change feeds to support future P2P or server sync without altering UI layers.
 - **Accessibility & Personalization**: High-contrast palette options, typography scaling presets, and motion reduction toggles.
+
+## Cross-Platform Alignment
+- Maintain a single set of design tokens (color, typography, spacing) consumed by Android Compose, SwiftUI, and Tailwind.
+- Track feature readiness in a shared board: API ready ? Android shipped ? iOS shipped ? Web shipped.
+- Keep preview/local data shape identical across platforms (`SockUiState`, `SockAppState`, `SockState`) to ease shared repository work.
+- Use automated lint/test pipelines per platform (Gradle, swift test, npm run lint/build) and schedule weekly triage for cross-platform issues.
 
 ## Risks & Notes
 - Avoid cloud plugins until a public rollout; keep remote dependencies behind feature flags/flavors.
